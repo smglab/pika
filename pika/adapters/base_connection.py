@@ -165,12 +165,13 @@ class BaseConnection(Connection):
         """
         self._manage_event_state()
 
-    def _adapter_disconnect(self):
+    def _adapter_disconnect(self, ioloop_stop=True):
         """
         Called if we are forced to disconnect for some reason from Connection.
         """
         # Remove from the IOLoop
-        self.ioloop.stop()
+        if ioloop_stop:
+            self.ioloop.stop()
 
         # Close our socket
         self.socket.shutdown(socket.SHUT_RDWR)
@@ -197,12 +198,13 @@ probable authentication error")
 probable permission error when accessing a virtual host")
             raise ProbableAccessDeniedError
 
-    def _handle_disconnect(self):
+    def _handle_disconnect(self, ioloop_stop=True):
         """
         Called internally when we know our socket is disconnected already
         """
         # Remove from the IOLoop
-        self.ioloop.stop()
+        if ioloop_stop:
+            self.ioloop.stop()
 
         # Close up our Connection state
         self._on_connection_closed(None, True)
@@ -234,6 +236,7 @@ probable permission error when accessing a virtual host")
         elif error_code in (errno.EBADF, errno.ECONNABORTED):
             log.error("%s: Socket is closed",
                     self.__class__.__name__)
+            return
 
         elif self.parameters.ssl and isinstance(error, ssl.SSLError):
             # SSL socket operation needs to be retried

@@ -21,6 +21,7 @@ if IOLoop:
 
 import time
 
+
 class TornadoConnection(BaseConnection):
 
     def __init__(self, parameters=None,
@@ -74,7 +75,7 @@ class TornadoConnection(BaseConnection):
         """
         self.stop_poller()
 
-        BaseConnection._handle_disconnect(self)
+        BaseConnection._handle_disconnect(self, ioloop_stop=False)
 
     def _adapter_disconnect(self):
         """
@@ -82,7 +83,7 @@ class TornadoConnection(BaseConnection):
         """
         self.stop_poller()
 
-        BaseConnection._adapter_disconnect(self)
+        BaseConnection._adapter_disconnect(self, ioloop_stop=False)
 
     def start_poller(self):
         # Start periodic _manage_event_state
