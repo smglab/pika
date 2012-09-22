@@ -212,6 +212,9 @@ probable permission error when accessing a virtual host")
         Internal error handling method. Here we expect a socket.error coming in
         and will handle different socket errors differently.
         """
+
+        error_code = None
+
         # Handle version differences in Python
         if hasattr(error, 'errno'):  # Python >= 2.6
             error_code = error.errno
