@@ -1,8 +1,5 @@
-# ***** BEGIN LICENSE BLOCK *****
-#
-# For copyright and licensing please refer to COPYING.
-#
-# ***** END LICENSE BLOCK *****
+"""Pika specific exceptions"""
+from pika import spec
 
 
 class AMQPError(Exception):
@@ -10,15 +7,21 @@ class AMQPError(Exception):
 
 
 class AMQPConnectionError(AMQPError):
-    pass
+    def __repr__(self):
 
+        if len(self.args) == 1:
+            return ("No connection could be opened after %s retries" %
+                    self.args[0])
+        elif len(self.args) == 2:
+            return "%s: %s" % (self.args[0], self.args[1])
 
 class IncompatibleProtocolError(AMQPConnectionError):
     pass
 
 
 class AuthenticationError(AMQPConnectionError):
-    pass
+    def __repr__(self):
+        return "No %s support for the credentials" % self.args[0]
 
 
 class ProbableAuthenticationError(AMQPConnectionError):
@@ -113,8 +116,14 @@ class CallbackReplyAlreadyRegistered(ChannelTransportError):
     pass
 
 
-class InvalidFrameSize(ProtocolSyntaxError):
-    pass
+class InvalidMinimumFrameSize(ProtocolSyntaxError):
+    def __repr__(self):
+        return "AMQP Minimum Frame Size is %i Bytes" % spec.FRAME_MIN_SIZE
+
+
+class InvalidMaximumFrameSize(ProtocolSyntaxError):
+    def __repr__(self):
+        return "AMQP Maximum Frame Size is %i Bytes" % spec.FRAME_MAX_SIZE
 
 
 class InvalidRPCParameterType(Exception):

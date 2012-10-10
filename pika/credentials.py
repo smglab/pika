@@ -1,14 +1,11 @@
-# ***** BEGIN LICENSE BLOCK *****
-#
-# For copyright and licensing please refer to COPYING.
-#
-# ***** END LICENSE BLOCK *****
+"""Credentials Classes"""
+import logging
 
-import pika.log as log
+LOGGER = logging.getLogger(__name__)
+
 
 class PlainCredentials(object):
-    """
-    The PlainCredentials class returns the properly formatted username and
+    """The PlainCredentials class returns the properly formatted username and
     password to the Connection. As of this version of Pika, only
     PlainCredentials are supported. To authenticate with Pika, simply create a
     credentials object passing in the username and password and pass that to
@@ -21,8 +18,8 @@ class PlainCredentials(object):
     in memory after the Connection attempt has been made. This means that you
     will not be able to use a Reconnection Strategy successfully if this is
     enabled.
-    """
 
+    """
     TYPE = 'PLAIN'
 
     def __init__(self, username, password, erase_on_connect=False):
@@ -52,7 +49,7 @@ class PlainCredentials(object):
         Called by Connection when it no longer needs the credentials
         """
         if self.erase_on_connect:
-            log.info("Erasing stored credential values")
+            LOGGER.info("Erasing stored credential values")
             self.username = None
             self.password = None
 
@@ -64,7 +61,7 @@ class ExternalCredentials(object):
     """
 
     TYPE = 'EXTERNAL'
-    
+
     def __init__(self):
         self.erase_on_connect = False
 

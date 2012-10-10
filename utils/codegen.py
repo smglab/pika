@@ -6,11 +6,19 @@
 
 from __future__ import nested_scopes
 
+import os
 import sys
-sys.path.append("../rabbitmq-codegen")  # in case we're next to an experimental revision
-sys.path.append("codegen")              # in case we're building from a distribution package
 
-from amqp_codegen import *
+RABBITMQ_PUBLIC_UMBRELLA = '../../rabbitmq-public-umbrella'
+RABBITMQ_CODEGEN = 'rabbitmq-codegen'
+PIKA_SPEC = '../pika/spec.py'
+
+CODEGEN_PATH = os.path.realpath('%s/%s' % (RABBITMQ_PUBLIC_UMBRELLA,
+                                           RABBITMQ_CODEGEN))
+print 'codegen-path: %s' % CODEGEN_PATH
+sys.path.append(CODEGEN_PATH)
+
+import amqp_codegen
 import re
 
 DRIVER_METHODS = {
@@ -59,8 +67,8 @@ def camel(s):
     return normalize_separators(s).title().replace('_', '')
 
 
-AmqpMethod.structName = lambda m: camel(m.klass.name) + '.' + camel(m.name)
-AmqpClass.structName = lambda c: camel(c.name) + "Properties"
+amqp_codegen.AmqpMethod.structName = lambda m: camel(m.klass.name) + '.' + camel(m.name)
+amqp_codegen.AmqpClass.structName = lambda c: camel(c.name) + "Properties"
 
 
 def constantName(s):
@@ -75,19 +83,27 @@ def flagName(c, f):
 
 
 def generate(specPath):
-    spec = AmqpSpec(specPath)
+    spec = amqp_codegen.AmqpSpec(specPath)
 
     def genSingleDecode(prefix, cLvalue, unresolved_domain):
         type = spec.resolveDomain(unresolved_domain)
         if type == 'shortstr':
             print prefix + "length = struct.unpack_from('B', encoded, offset)[0]"
             print prefix + "offset += 1"
-            print prefix + "%s = encoded[offset:offset + length]" % cLvalue
+            print prefix + "%s = encoded[offset:offset + length].decode('utf8')" % cLvalue
+            print prefix + "try:"
+            print prefix + "    %s = str(%s)" % (cLvalue, cLvalue)
+            print prefix + "except UnicodeEncodeError:"
+            print prefix + "    pass"
             print prefix + "offset += length"
         elif type == 'longstr':
             print prefix + "length = struct.unpack_from('>I', encoded, offset)[0]"
             print prefix + "offset += 4"
-            print prefix + "%s = encoded[offset:offset + length]" % cLvalue
+            print prefix + "%s = encoded[offset:offset + length].decode('utf8')" % cLvalue
+            print prefix + "try:"
+            print prefix + "    %s = str(%s)" % (cLvalue, cLvalue)
+            print prefix + "except UnicodeEncodeError:"
+            print prefix + "    pass"
             print prefix + "offset += length"
         elif type == 'octet':
             print prefix + "%s = struct.unpack_from('B', encoded, offset)[0]" % cLvalue
@@ -98,13 +114,9 @@ def generate(specPath):
         elif type == 'long':
             print prefix + "%s = struct.unpack_from('>I', encoded, offset)[0]" % cLvalue
             print prefix + "offset += 4"
-            print prefix + "if PYTHON_VERSION == 2.4:"
-            print prefix + "    %s = int(%s)" % (cLvalue, cLvalue)
         elif type == 'longlong':
             print prefix + "%s = struct.unpack_from('>Q', encoded, offset)[0]" % cLvalue
             print prefix + "offset += 8"
-            print prefix + "if PYTHON_VERSION == 2.4:"
-            print prefix + "    %s = int(%s)" % (cLvalue, cLvalue)
         elif type == 'timestamp':
             print prefix + "%s = struct.unpack_from('>Q', encoded, offset)[0]" % cLvalue
             print prefix + "offset += 8"
@@ -120,16 +132,18 @@ def generate(specPath):
         type = spec.resolveDomain(unresolved_domain)
         if type == 'shortstr':
             print prefix + \
-                "assert isinstance(%s, str), 'A non-bytestring value was supplied for %s'" \
-                % (cValue, cValue)
-            print prefix + "pieces.append(struct.pack('B', len(%s)))" % cValue
-            print prefix + "pieces.append(%s)" % cValue
+                "assert isinstance(%s, basestring),\\\n%s       'A non-bytestring value was supplied for %s'" \
+                % (cValue, prefix, cValue)
+            print prefix + "value = %s.encode('utf-8') if isinstance(%s, unicode) else %s" % (cValue, cValue, cValue)
+            print prefix + "pieces.append(struct.pack('B', len(value)))"
+            print prefix + "pieces.append(value)"
         elif type == 'longstr':
             print prefix + \
-                "assert isinstance(%s, str), 'A non-bytestring value was supplied for %s'" \
-                % (cValue, cValue)
-            print prefix + "pieces.append(struct.pack('>I', len(%s)))" % cValue
-            print prefix + "pieces.append(%s)" % cValue
+                "assert isinstance(%s, basestring),\\\n%s       'A non-bytestring value was supplied for %s'" \
+                % (cValue, prefix ,cValue)
+            print prefix + "value = %s.encode('utf-8') if isinstance(%s, unicode) else %s" % (cValue, cValue, cValue)
+            print prefix + "pieces.append(struct.pack('>I', len(value)))"
+            print prefix + "pieces.append(value)"
         elif type == 'octet':
             print prefix + "pieces.append(struct.pack('B', %s))" % cValue
         elif type == 'short':
@@ -262,14 +276,9 @@ def generate(specPath):
 # NOTE: Autogenerated code by codegen.py, do not edit
 
 import struct
-import pika.data as data
-import pika.object
+from pika import amqp_object
+from pika import data
 
-# Determine the version of PYTHON running so we can properly use the correct
-# struct variable type for decoding >Q in Python 2.4
-from platform import python_version_tuple
-major, minor, revision = python_version_tuple()
-PYTHON_VERSION = float("%s.%s" % (major, minor))
 """
 
     print "PROTOCOL_VERSION = (%d, %d, %d)" % (spec.major, spec.minor,
@@ -292,14 +301,14 @@ PYTHON_VERSION = float("%s.%s" % (major, minor))
 
     for c in spec.allClasses():
         print
-        print 'class %s(pika.object.Class):' % (camel(c.name),)
+        print 'class %s(amqp_object.Class):' % (camel(c.name),)
         print
         print "    INDEX = 0x%.04X  # %d" % (c.index, c.index)
         print "    NAME = %s" % (fieldvalue(camel(c.name)),)
         print
 
         for m in c.allMethods():
-            print '    class %s(pika.object.Method):' % (camel(m.name),)
+            print '    class %s(amqp_object.Method):' % (camel(m.name),)
             print
             methodid = m.klass.index << 16 | m.index
             print "        INDEX = 0x%.08X  # %d, %d; %d" % \
@@ -321,7 +330,7 @@ PYTHON_VERSION = float("%s.%s" % (major, minor))
     for c in spec.allClasses():
         if c.fields:
             print
-            print 'class %s(pika.object.Properties):' % (c.structName(),)
+            print 'class %s(amqp_object.Properties):' % (c.structName(),)
             print
             print "    CLASS = %s" % (camel(c.name),)
             print "    INDEX = 0x%.04X  # %d" % (c.index, c.index)
@@ -376,6 +385,8 @@ PYTHON_VERSION = float("%s.%s" % (major, minor))
             acceptable_replies = DRIVER_METHODS[m.structName()]
             print
             anchor = pyize("%s.%s" % (m.klass.name, m.name))
+            if 'immediate' in m.arguments:
+                m.arguments.remove('immediate')
             if m.isSynchronous:
 
                 #Synchronous events have a CPS callback parameter
@@ -428,4 +439,6 @@ PYTHON_VERSION = float("%s.%s" % (major, minor))
                        for f in m.arguments]))
 
 if __name__ == "__main__":
-    do_main_dict({"spec": generate})
+    with open(PIKA_SPEC, 'w') as handle:
+        sys.stdout = handle
+        generate(['%s/amqp-rabbitmq-0.9.1.json' % CODEGEN_PATH])

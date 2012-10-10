@@ -1,24 +1,21 @@
-# ***** BEGIN LICENSE BLOCK *****
-#
-# For copyright and licensing please refer to COPYING.
-#
-# ***** END LICENSE BLOCK *****
-
+"""Frame objects that do the frame demarshaling and marshaling."""
+import logging
 import struct
-import pika.log as log
-import pika.spec as spec
-import pika.exceptions as exceptions
 
-from pika.object import object_
+from pika import amqp_object
+from pika import exceptions
+from pika import spec
+
+LOGGER = logging.getLogger(__name__)
 
 
-class Frame(object_):
-    """
-    Base Frame object mapping. Defines a behavior for all child classes for
+class Frame(amqp_object.AMQPObject):
+    """Base Frame object mapping. Defines a behavior for all child classes for
     assignment of core attributes and implementation of the a core _marshal
     method which child classes use to create the binary AMQP frame.
-    """
 
+    """
+    NAME = 'Frame'
     def __init__(self, frame_type, channel_number):
         """
         Parameters:
@@ -39,12 +36,21 @@ class Frame(object_):
                            self.channel_number,
                            len(payload)) + payload + chr(spec.FRAME_END)
 
+    def marshal(self):
+        """To be ended by child classes
+
+        :raises NotImplementedError
+
+        """
+        raise NotImplementedError
+
 
 class Method(Frame):
-    """
-    Base Method frame object mapping. AMQP method frames are mappend on top
+    """Base Method frame object mapping. AMQP method frames are mapped on top
     of this class for creating or accessing their data and attributes.
+
     """
+    NAME = 'METHOD'
 
     def __init__(self, channel_number, method):
         """
@@ -66,10 +72,11 @@ class Method(Frame):
 
 
 class Header(Frame):
-    """
-    Header frame object mapping. AMQP content header frames are mapped
+    """Header frame object mapping. AMQP content header frames are mapped
     on top of this class for creating or accessing their data and attributes.
+
     """
+    NAME = 'Header'
 
     def __init__(self, channel_number, body_size, props):
         """
@@ -95,10 +102,11 @@ class Header(Frame):
 
 
 class Body(Frame):
-    """
-    Body frame object mapping class. AMQP content body frames are mapped on
+    """Body frame object mapping class. AMQP content body frames are mapped on
     to this base class for getting/setting of attributes/data.
+
     """
+    NAME = 'Body'
 
     def __init__(self, channel_number, fragment):
         """
@@ -118,10 +126,11 @@ class Body(Frame):
 
 
 class Heartbeat(Frame):
-    """
-    Heartbeat frame object mapping class. AMQP Heartbeat frames are mapped on
+    """Heartbeat frame object mapping class. AMQP Heartbeat frames are mapped on
     to this class for a common access structure to the attributes/data values.
+
     """
+    NAME = 'Heartbeat'
 
     def __init__(self):
         Frame.__init__(self, spec.FRAME_HEARTBEAT, 0)
@@ -133,11 +142,12 @@ class Heartbeat(Frame):
         return self._marshal(list())
 
 
-class ProtocolHeader(object_):
-    """
-    AMQP Protocol header frame class which provides a pythonic interface
+class ProtocolHeader(amqp_object.AMQPObject):
+    """AMQP Protocol header frame class which provides a pythonic interface
     for creating AMQP Protocol headers
+
     """
+    NAME = 'ProtocolHeader'
 
     def __init__(self, major=None, minor=None, revision=None):
         """
@@ -193,33 +203,33 @@ class Dispatcher(object):
         self._handler = self._handle_method_frame
         self.callbacks = callback_manager
 
-    def process(self, frame):
+    def process(self, frame_value):
         """
         Invoked by the ChannelTransport object when passed frames that are not
         setup in the rpc process and that don't have explicit reply types
         defined. This includes Basic.Publish, Basic.GetOk and Basic.Return
         """
-        self._handler(frame)
+        self._handler(frame_value)
 
-    def _handle_method_frame(self, frame):
+    def _handle_method_frame(self, frame_value):
         """
         Receive a frame and process it, we should have content by the time we
         reach this handler, set the next handler to be the header frame handler
         """
         # If we don't have FrameMethod something is wrong so throw an exception
-        if not isinstance(frame, Method):
-            raise exceptions.UnexpectedFrameError(frame)
+        if not isinstance(frame_value, Method):
+            raise exceptions.UnexpectedFrameError(frame_value)
 
         # If the frame is a content related frame go deal with the content
         # By getting the content header frame
-        if spec.has_content(frame.method.INDEX):
-            self._handler = self._handle_header_frame(frame)
+        if spec.has_content(frame_value.method.INDEX):
+            self._handler = self._handle_header_frame(frame_value)
 
         # We were passed a frame we don't know how to deal with
         else:
-            raise NotImplementedError(frame.method.__class__)
+            raise NotImplementedError(repr(frame_value.method))
 
-    def _handle_header_frame(self, frame):
+    def _handle_header_frame(self, frame_value):
         """
         Receive a header frame and process that, setting the next handler
         to the body frame handler
@@ -231,7 +241,7 @@ class Dispatcher(object):
                 raise exceptions.UnexpectedFrameError(header_frame)
 
             # Call the handle body frame including our header frame
-            self._handle_body_frame(frame, header_frame)
+            self._handle_body_frame(frame_value, header_frame)
 
         return handler
 
@@ -259,9 +269,9 @@ class Dispatcher(object):
             if seen_so_far[0] == header_frame.body_size:
                 finish()
             elif seen_so_far[0] < header_frame.body_size:
-                log.debug("Received message Body frame, %i of %i bytes of \
-message body received.",
-                          seen_so_far[0], header_frame.body_size)
+                LOGGER.debug('Received message Body frame, %i of %i bytes of '
+                             'message body received.',
+                             seen_so_far[0], header_frame.body_size)
             # Did we get too many bytes?
             elif seen_so_far[0] > header_frame.body_size:
                 error = 'Received %i and only expected %i' % \
