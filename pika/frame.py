@@ -274,6 +274,7 @@ message body received.",
 
             # Get our method name
             method = method_frame.method.__class__.__name__
+
             if method == 'Deliver':
                 key = '_on_basic_deliver'
             elif method == 'GetOk':
